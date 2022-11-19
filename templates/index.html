@@ -1,0 +1,40 @@
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="{{ url_for('static', path='/pico.min.css') }}" rel="stylesheet" />
+    <title>Lost in diffusion</title>
+</head>
+
+<body>
+    <div style="display:flex; flex-direction:column; height: 100%;">
+        <nav class="container-fluid">
+            <ul>
+                <li>You are:</li>
+                <li id="usernameDisplay"></li>
+            </ul>
+            <ul>
+                <li>Lost In Diffusion</li>
+            </ul>
+            <ul>
+                <li>Currently online:</li>
+                <li id="onlineCount">0</li>
+            </ul>
+        </nav>
+        <div style="overflow-y: auto; width: 100%; flex:1;" id="chatContainer">
+            <main class="container" id="chatroom">
+            </main>
+        </div>
+        <div class="container">
+            <div style="display:flex; flex-direction:row;" id="chatbox">
+                <input type="text" name="prompt" id="prompt" placeholder="Enter yout prompt" style="flex: 3">
+                <button type="submit" style="flex: 1" id="submit">Send</button>
+            </div>
+        </div>
+    </div>
+    <script src="{{ url_for('static', path='/index.js') }}"></script>
+</body>
+
+</html>
