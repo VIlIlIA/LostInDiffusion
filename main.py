@@ -21,65 +21,72 @@ app: FastAPI = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-onlineCount: int = 0
+debug = False;
 
-class SocketManager:
+class Connection:
+    def __init__(self, socket: WebSocket, username: str):
+        self.socket = socket
+        self.username = username
+
+    def __eq__(self, other) -> bool:
+        return self.username == other.username
+
+    async def send_json(self, data):
+        await self.socket.send_json(data)
+
+class ConnectionManager:
     def __init__(self):
-        self.active_connections: List[tuple[WebSocket, str]] = []
+        self.connections: List[Connection] = []
 
-    async def connect(self, websocket: WebSocket, user: str):
-        await websocket.accept()
-        self.active_connections.append((websocket, user))
+    async def connect(self, socket: WebSocket, user: str):
+        await socket.accept()
+        self.connections.append(Connection(socket, user))
 
-    def disconnect(self, websocket: WebSocket, user: str):
-        self.active_connections.remove((websocket, user))
+    def disconnect(self, socket: WebSocket, user: str):
+        self.connections.remove(Connection(socket, user))
+
+    def onlineCount(self) -> int:
+        return len(self.connections)
 
     async def broadcast(self, data):
-        for connection in self.active_connections:
-            await connection[0].send_json(data)    
+        [await connection.send_json(data) for connection in self.connections] 
+    
+    async def send(self, data, user):
+        [await connection.send_json(data) for connection in [i for i in self.connections if i.username == user]]
 
-manager = SocketManager()
+
+connectionManager = ConnectionManager()
 
 @app.websocket("/api/chat")
-async def chat(websocket: WebSocket):
-    global onlineCount
-    sender = websocket.cookies.get("X-Authorization")
+async def chat(socket: WebSocket):
+    sender = generate_username()
     if sender:
-        await manager.connect(websocket, sender)
+        await connectionManager.connect(socket, sender)
         response = {
             "sender": sender,
             "message": "connected"
         }
-        onlineCount += 1
-        await manager.broadcast(response)
-        await manager.broadcast({"online": onlineCount})
+        await connectionManager.send({"update": sender}, sender)
+        await connectionManager.broadcast(response)
+        await connectionManager.broadcast({"online": connectionManager.onlineCount()})
         try:
             while True:
-                data = await websocket.receive_json()
-                await manager.broadcast({"lock" : True})
+                data = await socket.receive_json()
+                await connectionManager.broadcast({"lock" : True})
                 filename = str(uuid4())
                 image = pipeline(data.get('message')).get("images")[0]
                 image.save(f"./static/images/{filename}.png")
-                await manager.broadcast({"unlock" : True})
-                await manager.broadcast({
+                await connectionManager.broadcast({"unlock" : True})
+                await connectionManager.broadcast({
                     "sender": sender,
                     "image": filename,
-                    "prompt": data.get('message')
+                    "prompt": data.get('message') if debug else ""
                 })
         except WebSocketDisconnect:
-            manager.disconnect(websocket, sender)
-            onlineCount -= 1
+            connectionManager.disconnect(socket, sender)
             response['message'] = "left"
-            await manager.broadcast(response)
-            await manager.broadcast({"online": onlineCount})
-
-@app.get("/api/user")
-def get_user(request: Request):
-    return request.cookies.get("X-Authorization")
-
-@app.post("/api/register")
-def register_user(response: Response):
-    response.set_cookie(key="X-Authorization", value=generate_username(), httponly=True)
+            await connectionManager.broadcast(response)
+            await connectionManager.broadcast({"online": connectionManager.onlineCount()})
 
 @app.get("/")
 async def get(request: Request):
